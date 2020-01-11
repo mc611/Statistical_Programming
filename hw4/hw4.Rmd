@@ -1,0 +1,162 @@
+---
+title: "Homework 4"
+author: 'beta: Cole Juracek, George Lindner, Ziang Wang, Mengxuan Cui'
+date: "9/26/2019"
+output: 
+  html_document:
+    keep_md: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, comment = NA, message = FALSE)
+```
+
+## Packages
+
+```{r packages}
+library(tidyverse)
+library(purrr)
+library(tidyr)
+library(stringr)
+```
+
+## Data
+
+```{r}
+nasa <- readRDS(file = "nasa.rds")
+```
+
+## Task 1
+
+Transform list nasa into a data frame called nasa_df. Try as much as possible to avoid referencing variables by position or name. Unimportant variables may be removed in this process; however, parsing individual data values, correcting errors, converting variable types, and so on, should be left for task 2.
+Your score will depend on your code's efficiency, quality, and correctness. In this setting, `map()` and `apply()` variants are much better than loops. 
+
+Convert nasa into a tidy data frame. The following variables should be included in your final tidy data frame: name, id, features, nametype, recclass, mass, fall, year, month, day, hours, minutes, seconds, reclat, reclong, geo_coord.
+
+```{r turn into data frame}
+
+nasa_to_df <- function(x){
+  d <- data.frame(map(nasa, unlist)[x])
+  df <- data.frame(t(d), row.names = NULL, stringsAsFactors = F)
+  return(df)
+}
+
+# Use lapply to make all elements to dataframes and then combine
+nasa_df <- bind_rows(lapply(1:length(nasa), function(x) nasa_to_df(x)))
+```
+
+## Task 2
+
+```{r create functions}
+
+combine_features <- function(nasa){
+  
+  temp <- unite(nasa, col = "features", 
+                features1:features, sep = ", ", na.rm = T)
+  
+  temp$features <- na_if(temp$features, "NA")
+  temp$features <- na_if(temp$features, "n/a")
+  temp$features <- na_if(temp$features, "unknown")
+  temp$features <- strsplit(temp$features, split = ",")
+
+  return(temp)
+
+}
+
+
+
+# Make Mass Positive and turn appropriate columns to numeric
+
+nasa_numeric <- function(nasa){
+
+  nasa$mass <- nasa$mass %>% str_remove("-") %>% str_remove("[++]")
+  names <- c("mass","year","month","day","hours","minutes","seconds","reclat",
+             "reclong")
+  nasa[names] <- lapply(nasa[names], as.numeric)
+
+  return(nasa)
+}
+
+
+# change geolocation into 1 column
+
+make_geocoord <- function(nasa){
+  
+  nasa$geolocation.coordinates1 <- nasa$geolocation.coordinates1 %>% 
+  str_remove("X") %>% 
+  str_remove("xx")
+  nasa$geolocation.coordinates1 <- round(as.numeric(nasa$geolocation.coordinates1), digits = 3)
+  
+  nasa$geolocation.coordinates2 <- nasa$geolocation.coordinates2 %>% 
+  str_remove("X") %>% 
+  str_remove("xx")
+  nasa$geolocation.coordinates2 <- round(as.numeric(nasa$geolocation.coordinates2), digits = 3)
+  
+  unite(nasa, col = "geo_coord", 
+        geolocation.coordinates1:geolocation.coordinates2, 
+        sep = ", ") 
+} 
+
+
+drop_columns <- function(nasa){
+  
+  drop <- c('geolocation.type', 'X..computed_region_cbhk_fwbd', 'X..computed_region_nnqa_25f4')
+  nasa %>%  select(-drop)
+  
+}
+
+parse_year <- function(nasa_df) {
+
+  nasa_df <- nasa_df %>% 
+    separate(col = year, into = c("year", "month", "day", "hours", "minutes", "seconds"), 
+             sep = "[^0-9]+", extra = "drop")
+
+  return(nasa_df)
+  
+}
+
+reorder_nasa <- function(nasa){
+  
+  columns <- c('name', 'id', 'features', 'nametype', 'recclass', 'mass', 'fall', 'year', 'month', 'day', 'hours', 'minutes', 'seconds', 'reclat', 'reclong', 'geo_coord')
+  nasa %>% select(columns)
+  
+}
+
+```
+
+```{r function piping}
+
+final_df <- nasa_df %>% 
+  unique() %>% 
+  drop_columns() %>% 
+  combine_features() %>% 
+  parse_year() %>% 
+  make_geocoord() %>% 
+  nasa_numeric() %>% 
+  reorder_nasa()
+
+head(final_df)
+```
+## Task 3
+
+#### Process for Task 1
+
+The first task required us to turn our Nasa list into a data frame. In the nasa_to_df function, the input is each element (1003 elements) in the nasa list. The function unlists the nested lists in the input, and turn the input into a single dataframe. By using the "lapply" with the nasa_to_df as the function, we turn each element in the nasa list to 1003 dataframes. Then we use bind_rows to combine them together to a single data frame, nasa_df.
+
+#### Process for Task 2
+
+The second task required us to actually tidy up our data frame. We opted to create helper functions for each of the main issues we encountered, and then pipe them all in succession to achieve our final result. The problems and solutions are as follows (in no particular order):
+
+1. The year variable needed to be parsed into year, month, day, hours, minutes, seconds. We accomplished this with the "separate" function, parsing year into its respective components with a regex that splits on any non-digit strings. The only other issue here was frequently encountering an extra measurement in year (000); this was simply dropped, as it was not relevant. Our helper function for this was "parse_year()".
+
+2. After converting to a data frame, we had irrelevant columns 'geolocation.type', 'X..computed_region_cbhk_fwbd', and 'X..computed_region_nnqa_25f4'. These were simply dropped. The helper function was "drop_columns()"
+
+3. 3 observations in the data frame were duplicate. These were found + dropped with the 'unique()' function.
+
+4. The geolocation coordinates were originally in 2 columns. These were combined into 1 column (geo_coord) with the "unite" function. We round coordinates to 3 digits. We keep it as a string with 2 components, since it's easier to read and readers could extract coordinates from columns "reclat" and "reclong". Our helper function for this was "make_geocoord".
+
+5. The quantitative variables were coded as strings. We fixed this with applying the "as.numeric()" function to the relevant columns. We also noticed that occasionally mass was negative. To fix this, we took the absolute value. Our helper function for this was "nasa_numeric()"
+
+6. Each meteorite had a variable number of features associated with it. Initially, our data frame had a separate column for each specific feature. We combined these into one column, 'features', a list of features specific to that meteorite. If there's no value or if features to that meteorite are unknown, we make it as NA. Our helper function for this was "combine_features".
+
+7. Finally, we reordered the columns to match the prompt. The helper function is "reorder_nasa".
