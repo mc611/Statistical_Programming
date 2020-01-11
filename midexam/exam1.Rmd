@@ -1,0 +1,207 @@
+---
+title: "Exam 1"
+author: 'Mengxuan CUI'
+date: "10/04/2019"
+output: 
+  html_document:
+    keep_md: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, comment = NA, 
+                      message = FALSE, warning = FALSE)
+```
+
+## Packages
+
+```{r packages}
+library(data.table)
+library(dplyr)
+library(tidyverse)
+library(purrr)
+library(tidyr)
+library(stringr)
+library(hms)
+library(lubridate)
+library(ggplot2)
+```
+
+## Data
+
+```{r data}
+tdf <- readRDS(file = "tdf_2019.rds")
+```
+
+## Task 1
+```{r}
+
+# extract usful elements and to dataframe
+list1 <- lapply(tdf, function(x) x$stage)
+list2 <- lapply(list1, function(x) x[c("description","scheduled","departure_city","arrival_city","classification","distance","competitors")])
+
+list3 <- map(list2, as.data.table)
+df1 <- rbindlist(list3, fill = TRUE)
+
+# expand competitors colomns 
+df1$rider_name <- lapply(df1$competitors, function(x) x$name)
+df1$rider_nat <- lapply(df1$competitors, function(x) x$nationality)
+df1$team_name <- lapply(df1$competitors, function(x) x$team$name)
+df1$team_nat <- lapply(df1$competitors, function(x) x$team$nationality)
+df1$time <- lapply(df1$competitors, function(x) x$result$time)
+df1$time_rank <- lapply(df1$competitors, function(x) x$result$time_ranking)
+df1$sprint_pts <- lapply(df1$competitors, function(x) x$result$sprint)
+df1$sprint_rank <- lapply(df1$competitors, function(x) x$result$sprint_ranking)
+df1$climb_pts <- lapply(df1$competitors, function(x) x$result$climber)
+df1$climb_rank <- lapply(df1$competitors, function(x) x$result$climber_ranking)
+df1$young_rider_time <- lapply(df1$competitors, function(x) x$result$young_rider)
+df1$young_rider_rank <- lapply(df1$competitors, function(x) x$result$young_rider_ranking)
+
+# create "stage" 
+df1$stage <- lapply(df1$description, str_remove, pattern = "Stage")
+
+# create "start_date" 
+df1 <- df1 %>% 
+    separate(col = scheduled, into = c("start_date", "start_time"), sep = "T") 
+
+# rename to "dep_city","arr_city
+names(df1)[names(df1)=="departure_city"] <- "dep_city"
+names(df1)[names(df1)=="arrival_city"] <- "arr_city"
+
+# "distance"
+df1$distance <- df1$distance %>% str_replace(",",".")
+
+# reorder 
+df2 <- df1 %>%
+  select(rider_name,rider_nat,team_name,team_nat,stage,dep_city,arr_city,classification,distance,start_date,time,time_rank,sprint_pts,sprint_rank,climb_pts,climb_rank,young_rider_time,young_rider_rank)
+
+# replece with NA 
+is.na(df2) <- df2 == "NULL"
+df2[is.na(df2)] <- NA 
+df3 <- setDF(df2)
+
+# format 
+cols_integer <- c("stage","time_rank","sprint_rank","climb_rank","young_rider_rank")
+cols_double <- c("distance","sprint_pts","climb_pts")
+cols_character <- c("rider_name","rider_nat","team_name","team_nat","dep_city","arr_city","classification","time","young_rider_time")
+cols_date <- c("start_date")
+
+df3[cols_integer] <- lapply(df3[cols_integer], as.integer)
+df3[cols_double] <- lapply(df3[cols_double], as.double)
+df3[cols_character] <- lapply(df3[cols_character], as.character)
+df3[cols_date] <- lapply(df3[cols_date], as.Date)
+
+# result of task1
+res1 <- df3
+
+```
+
+## Task 2
+
+```{r}
+
+df4 <- df3
+df4$time <- df4$time  %>% str_remove("\\+") %>% str_replace("\\.",":") %>% as_hms
+df4$young_rider_time <- df4$young_rider_time  %>% str_remove("\\+") %>% str_replace("\\.",":") %>% as_hms
+
+df_time <- df4 %>% filter(time_rank == 1) %>% select(stage,time) 
+names(df_time)[names(df_time)=="time"] <- "winner_time"
+df_ytime <- df4 %>% filter(young_rider_rank == 1) %>% select(stage, young_rider_time)
+names(df_ytime)[names(df_ytime)=="young_rider_time"] <- "ywinner_time"
+
+df4 <- merge(x=df4,y=df_time,by="stage",all.x=TRUE)
+df4$time[df4$time_rank==1] <- as_hms("00:00:00")
+df4$time <- as_hms( as_hms(df4$time)+as_hms(df4$winner_time) )
+
+df4 <- merge(x=df4,y=df_ytime,by="stage",all.x=TRUE)
+df4$young_rider_time[df4$young_rider_rank==1] <- as_hms("00:00:00")
+df4$young_rider_time <- as_hms( as_hms(df4$young_rider_time)+as_hms(df4$ywinner_time) )
+
+# result of task2.1
+res2 <- df4  %>% select(c(1:18))
+
+```
+
+
+```{r}
+
+df_climb <- df3 %>% select(rider_name, stage, climb_pts) 
+df_climb[is.na(df_climb)] <- 0 
+
+df_climb <- df_climb %>% 
+  spread(key = stage, value = climb_pts) 
+
+colnames(df_climb) <- c("rider_name", "stage_1", "stage_2", "stage_3", "stage_4", "stage_5", "stage_6", "stage_7", "stage_8", "stage_9", "stage_10", "stage_11", "stage_12", "stage_13", "stage_14", "stage_15", "stage_16", "stage_17", "stage_18", "stage_19", "stage_20", "stage_21")
+
+df_climb$total_climb_pts <- rowSums(df_climb[,2:22])
+
+df_climb <- df_climb %>%
+  arrange(desc(total_climb_pts)) %>%
+  slice(1:30)
+df_climb$rank <- c(1:30)
+
+cols_name <- c("rider_name","rank","stage_1", "stage_2", "stage_3", "stage_4", "stage_5", "stage_6", "stage_7", "stage_8", "stage_9", "stage_10", "stage_11", "stage_12", "stage_13", "stage_14", "stage_15", "stage_16", "stage_17", "stage_18", "stage_19", "stage_20", "stage_21","total_climb_pts")
+climb_king<- df_climb %>% select(cols_name)
+
+```
+
+## Task 3
+
+```{r}
+
+dfc <- df3 %>% select(rider_name, team_name, team_nat, stage, climb_pts) 
+dfc[is.na(dfc)] <- 0 
+
+dfc <- dfc %>% 
+  spread(key = stage, value = climb_pts) 
+dfc$pts <- rowSums(dfc[,4:24])
+
+dfc_top <-  dfc %>%
+  select(team_name, team_nat, pts) %>%
+  group_by(team_name) %>%
+  summarize(team_pts = sum(pts))%>%
+  arrange(desc(team_pts)) %>%
+  slice(1:10)
+
+ggplot(dfc_top, mapping = aes(x = reorder(team_name,team_pts), 
+                          y = team_pts,
+                          fill = team_name)) +
+  geom_bar(stat = "identity", show.legend = FALSE) +
+  scale_fill_manual(values = c("#9a4a6f","#50b957","#9e61dc","#89b432","#5c70db",
+                               "#d2a036","#9346a7","#55bd94","#c842a5","#437d44")) +
+  theme_bw(base_size = 18) +
+  labs(y = "Points", x = "Team",
+       title = "Top 10 Team in Climbing Points") +
+  coord_flip()
+
+```
+
+
+```{r}
+
+dfs <- df3 %>% select(rider_name, team_name, team_nat, stage, sprint_pts) 
+dfs[is.na(dfs)] <- 0 
+
+dfs <- dfs %>% 
+  spread(key = stage, value = sprint_pts) 
+dfs$pts <- rowSums(dfs[,4:24])
+
+dfs_top <-  dfs %>%
+  select(team_name, team_nat, pts) %>%
+  group_by(team_name) %>%
+  summarize(team_pts = sum(pts))%>%
+  arrange(desc(team_pts)) %>%
+  slice(1:10)
+
+ggplot(dfs_top, mapping = aes(x = reorder(team_name,team_pts), 
+                          y = team_pts,
+                          fill = team_name)) +
+  geom_bar(stat = "identity", show.legend = FALSE) +
+  scale_fill_manual(values = c("#9a4a6f","#50b957","#9e61dc","#89b432","#5c70db",
+                               "#d2a036","#9346a7","#55bd94","#c842a5","#437d44")) +
+  theme_bw(base_size = 18) +
+  labs(y = "Points", x = "Team",
+       title = "Top 10 Team in Sprinting Points") +
+  coord_flip()
+
+```
+
