@@ -1,0 +1,457 @@
+---
+title: "Exam 2"
+author: 'Mengxuan Cui'
+date: "11/14/2019"
+output: 
+  html_document:
+    keep_md: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, comment = NA, 
+                      message = FALSE, warning = FALSE)
+```
+
+```{r}
+library(jsonlite)
+library(tidyverse)
+library(httr)
+library(multidplyr)
+library(lubridate)
+library(data.table)
+library(shiny)
+library(shinydashboard)
+library(shinythemes)
+library(dplyr)
+library(readr)
+```
+
+```{r}
+key <- "8089a576f2a54f8da13ccf32dbda7d51"
+category_list <- c("business", "entertainment", "general", "health", "science", "sports", "technology")
+source_name <- c("CNN", "Fox News", "The Wall Street Journal", "Reuters")
+sortby_list <- c("relevancy","popularity","publishedAt")
+```
+
+## Task 1
+
+1.Get all the news sources categorized as general or business, where the language is English and the country is United States. 
+Filter the result to obtain the ids for CNN, Fox News, The Wall Street Journal, and Reuters.
+```{r}
+url1_1 <- "https://newsapi.org/v2/sources?category=business&language=en&country=us&apiKey=8089a576f2a54f8da13ccf32dbda7d51"
+url1_2 <- "https://newsapi.org/v2/sources?category=general&language=en&country=us&apiKey=8089a576f2a54f8da13ccf32dbda7d51"
+
+response1_1 <- GET(url1_1) 
+response1_2 <- GET(url1_2) 
+
+content_text1_1 <- content(response1_1, as = "text")
+content_text1_2 <- content(response1_2, as = "text")
+
+content_parsed1_1 <- fromJSON(content_text1_1)  
+content_parsed1_2 <- fromJSON(content_text1_2) 
+
+df1_1 <- content_parsed1_1$sources %>% data.frame()
+df1_2 <- content_parsed1_2$sources %>% data.frame()
+df1 <- rbind(df1_1,df1_2) 
+
+df1_filtered <- df1 %>%
+  filter(name %in% source_name) %>%
+  select(name, id)
+
+print(df1)
+print(df1_filtered)
+```
+
+2.Get the most recent headline title from CNN, Fox News, The Wall Street Journal, and Reuters about "taxes", where the country is United States.
+```{r}
+url2 <- "https://newsapi.org/v2/top-headlines?country=us&q=taxes&apiKey=8089a576f2a54f8da13ccf32dbda7d51"
+
+response2 <- GET(url2)
+content_text2 <- content(response2, as = "text")
+content_parsed2 <- fromJSON(content_text2) 
+
+if(content_parsed2$totalResults == 0){
+  df2 <- data.frame()
+}else{
+  df2 <- content_parsed2$articles %>%
+    data.frame() %>%
+    filter(source$name %in% source_name) %>%
+    arrange(desc(publishedAt)) %>%
+    select(title) %>%
+    slice(1) 
+}
+
+print(df2)
+```
+
+3.Get the headline titles from CNN, Fox News, The Wall Street Journal, and Reuters on 11-01-19, where "healthcare" was in the title, the country is United States, and language is English.
+```{r}
+url3 <- "https://newsapi.org/v2/everything?qInTitle=healthcare&sources=cnn,fox-news,the-wall-street-journal,reuters&from=2019-11-01&to=2019-11-01&language=en&apiKey=8089a576f2a54f8da13ccf32dbda7d51"
+
+response3 <- GET(url3)
+content_text3 <- content(response3, as = "text")
+content_parsed3 <- fromJSON(content_text3)
+
+if(content_parsed3$totalResults == 0){
+  df3 <- data.frame()
+}else{
+  df3 <-content_parsed3$articles %>% 
+    data.frame() %>%
+    select(title) 
+}
+
+print(df3)
+```
+
+
+## Task 2
+
+1.Create get_sources() with arguments category and api_key. 
+```{r}
+get_sources <- function(category, api_key=key){
+  
+  base_url <- "https://newsapi.org/v2/sources?"
+  url <- paste0(base_url,"category=",category,"&language=en&country=us&apiKey=",api_key=key)
+  
+  # check 'category'
+  if(!is.null(category)){
+    if(length(category) > 1){
+      stop("No more than one category!")
+    }else if(!category %in% category_list){
+      stop("Category invalid!")
+    }
+  }
+
+  # check 'api-key'
+  if (nchar(api_key) == 0){
+    stop(("Api key invalid!"))
+  }
+  
+  # valid input 
+  response <- GET(url) 
+  content_text <- content(response, as = "text")
+  content_parsed <- fromJSON(content_text)
+
+  df <- content_parsed$sources %>%
+    data.frame() %>%
+    filter(name %in% source_name) 
+  
+  return(df)
+ }
+```
+
+2.Create get_headlines() with arguments sources, q, page_size, page, and api_key. 
+
+```{r}
+source_id <- c("cnn", "fox-news", "the-wall-street-journal", "reuters")
+```
+
+```{r}
+get_headlines <- function(sources=source_id, q='', page_size, page=1, api_key=key){
+  
+  base_url <- "https://newsapi.org/v2/top-headlines?country=us"
+  url <- paste0(base_url,"&q=",q,"&pageSize=",page_size,"&page=",page,"&apiKey=",api_key)
+  
+  # check 'page_size' is num and <= 100
+  if(!is.numeric(page_size)){
+    stop("Page size should be a number!")
+  }else if(page_size > 100){
+    stop("Page size cannot not exceed 100!")
+  }
+  
+  # check 'page'
+  if(!is.numeric(page)) {
+    stop("Page should be a number!")
+  }
+  
+  # check 'api-key'
+  if (nchar(api_key) == 0){
+     stop(("Api key invalid!"))
+  }
+  
+  response<- GET(url) 
+  content_text <- content(response, as = "text")
+  content_parsed <- fromJSON(content_text)
+  
+  if(is.null(content_parsed$totalResults)){
+    content_parsed$totalResults <- 0
+  }
+  
+  if(content_parsed$totalResults == 0){
+    df <- data.frame()
+  }else{
+    df <- content_parsed$articles %>% 
+      data.frame() %>%
+      filter(source$id %in% sources)
+  }
+    
+  return(df)
+
+}
+```
+
+3.Create get_historic() with arguments q, q_title, sources, from, to, sort_by, page_size, page, api_key. 
+```{r}
+get_historic <- function(q='', q_title='', sources=source_id, from, to, sort_by, page_size, page=1, api_key=key){
+  
+  # check 'from', 'to'
+  if("from">"to"){
+    stop("from, to time invalid!")
+  }
+  
+  # check sort by
+  if (!(sort_by %in% c("publishedAt", "relevancy", "popularity"))) {
+    stop("Sort by invalid!")
+  }
+  
+  # check 'page_size' is number and <= 100
+  if(!is.numeric(page_size)){
+    stop("Page size should be  an integer!")
+  }else if(page_size > 100){
+    stop("Page size cannot not exceed 100!")
+  }
+  
+  # check 'page'
+  if(!is.numeric(page)) {
+    stop("Page should be an integer!")
+  }
+  
+  # check 'api-key'
+  if (nchar(api_key) == 0){
+     stop("Api key invalid!")
+  }
+ 
+  base_url <- "https://newsapi.org/v2/everything?"
+  url <- paste0(base_url,"q=",q,"&qInTitle=",q_title,"&sources=",sources,"&from=",from,"&to=",to,"&language=en","&sortBy=",sort_by,"&pageSize=",page_size,"&page=",page,"&apiKey=",api_key)
+  
+  response <- GET(url)
+  content_text <- content(response, as = "text")
+  content_parsed <- fromJSON(content_text)
+
+  if(is.null(content_parsed$totalResults)){
+    content_parsed$totalResults <- 0
+  } 
+  
+  if(content_parsed$totalResults == 0){
+    print("No result!")
+  }else{
+    df <- content_parsed$articles %>% 
+      data.frame() %>%
+      filter(source$id %in% sources)
+  }
+  
+  return(df)
+  
+}
+```
+
+
+## Task 3
+
+```{r eval=FALSE}
+
+library(shiny)
+library(shinydashboard)
+library(shinythemes)
+library(dplyr)
+library(readr)
+
+library(shiny)
+library(shinydashboard)
+library(shinythemes)
+library(dplyr)
+library(readr)
+
+ui <- dashboardPage(
+    dashboardHeader(title = "Central News Hub"),
+    
+    ## Sidebar content
+    dashboardSidebar(
+        sidebarMenu(
+            menuItem("Get Sources", tabName = "get_sources", icon = icon("search-location")),
+            menuItem("Get Headlines", tabName = "get_headlines", icon = icon("heading")),
+            menuItem("Get Historic", tabName = "get_historic", icon = icon("newspaper"))
+        )
+    ),
+    
+    ## Body content
+    dashboardBody(
+        tabItems(
+            # First tab content
+            tabItem(tabName = "get_sources",
+                    fluidRow(
+                        box(
+                            width = 10,
+                            title = "Parameters",
+                            background = "light-blue",
+                            selectInput("category1", 
+                                        label = "Category",
+                                        choices = c("business","entertainment", "general", "health",
+                                                    "science","sports","technology"),
+                                        selected = "general"
+                            ),
+                            textInput("key1",
+                                      label = 'API-key'
+                            ),
+                            submitButton("search")
+                        ),
+                        box(
+                            width = 10,
+                            title = "Sources Found",
+                            background = "blue",
+                            tableOutput("source")
+                        )
+                    )
+            ),
+            
+            # Second tab content
+            tabItem(tabName = "get_headlines",
+                    fluidRow(
+                        box(
+                            width = 10,
+                            title = "Parameters",
+                            background = "light-blue",
+                            checkboxGroupInput("source2", 
+                                            label = "Source",
+                                            choices = c("cnn", "fox-news", "the-wall-street-journal", "reuters"),
+                                            selected = c("cnn", "fox-news", "the-wall-street-journal", "reuters")
+                            ),
+                            textInput("q2", 
+                                      label = "Keywords/Phrase", ""
+                            )
+                        ),
+                        
+                        box(
+                            width = 5,
+                            title = "Parameters",
+                            sliderInput("ps2",
+                                        label = "Page Size",
+                                        min = 10, max = 100, value = 10
+                            ),
+                            sliderInput("page2",
+                                        label = "Page",
+                                        min = 1, max = 100, value = 1
+                            )
+                        ),
+                            
+                        box(
+                            width = 5,
+                            title = "Parameters",
+                            textInput("key2",
+                                      label = 'API-key'
+                            ),
+                            submitButton("search")
+                        ),
+                        
+                        box(
+                            width = 10,
+                            title = "Headlines Found",
+                            background = "blue",
+                            tableOutput("headline")
+                        )
+                    )
+            ),
+            
+            # Third tab content  sources,  
+            tabItem(tabName = "get_historic",
+                    fluidRow(
+                        box(
+                            width = 5,
+                            title = "Keywords/Phrase",
+                            background = "light-blue",
+                            textInput("q3int", 
+                                      label = "in the title only"),
+                            textInput("q3", 
+                                      label = "in the title and body"),
+                        ),
+                        
+                        box(
+                            width = 5,
+                            title = "Sort By",
+                            background = "light-blue",
+                            selectInput("sortby", 
+                                        label = "sort by",
+                                        choices = c("relevancy","popularity", "publishedAt"),
+                                        selected = "relevancy"
+                            )
+                        ),
+                        
+                        box(
+                            width = 10,
+                            title = "Time Range",
+                            background = "light-blue",
+                            dateInput("from", "From"),
+                            dateInput("to", "To"),
+                        ),
+                        
+                       
+                        
+                        box(
+                            width = 10,
+                            title = "Page Size",
+                            sliderInput("ps3",
+                                        label = "page size",
+                                        min = 10, max = 100, value = 10
+                            ),
+                            sliderInput("page3",
+                                        label = "page",
+                                        min = 1, max = 100, value = 1
+                            )
+                        ),
+                        
+                        box(
+                            width = 10,
+                            title = "Parameters",
+                            background = "light-blue",
+                            selectInput("source3", 
+                                        label = "Source",
+                                        choices = c("cnn", "fox-news", "the-wall-street-journal", "reuters"),
+                                        selected = " "
+                            ),
+                            textInput("key3",
+                                      label = 'API-key'
+                            ),
+                            submitButton("button", "search")
+                        ),
+                        
+                        box(
+                            width = 10,
+                            title = "Everything Found",
+                            background = "blue",
+                            tableOutput("everything")
+                        )
+                    )
+            )
+        )
+    )
+)
+
+
+server <- function(input, output) {
+    
+    output$source <- renderTable({
+        get_sources(input$category1, input$key1)
+    })
+    
+    
+    output$headline <- renderTable({
+        get_headlines(input$source2, input$q2, input$ps2, input$page2, input$key2) %>%
+            select(author, title, description, url, content)
+    })
+    
+    
+    output$everything <- renderTable({
+        get_historic(input$q3, input$q3int, input$source3, input$from, input$to, input$sortby, input$ps3, input$page3, input$key3) %>%
+            select(author,title,description,url,content)
+    })
+    
+}
+
+shinyApp(ui, server)
+
+
+```
+
+
+
+
