@@ -1,0 +1,94 @@
+---
+title: "Homework 5--solstice"
+author: 'Mengxuan Cui, Bingruo Wu, Ziang Wang, Lauren Palazzo'
+date: "10/17/2019"
+output: 
+  html_document:
+    keep_md: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, comment = NA, message = FALSE,
+                      warning = FALSE)
+library(dplyr)
+library(tidyverse)
+library(ggplot2)
+library(sp)
+library(leaflet)
+```
+
+## Task 1
+
+In get_wawa.R, first of all, we use two "if statement" to create directories data and data/wawa if they don't exist in our workspace. We set "index" and "num" to create 5-digit store index for all potential stores used in the url. The function "get_list_all" would scrape the data from each json file of each existing store. In this function, we first run the store url. And we use "tryCatch" to detect if the store index is valid. If it's valid, then we use "read_json" to scrape the data. If it's invalid, then it will return nothing. Finally, we apply the function "get_list_all" to all existing store index and save it as a whole list with each nested list containing data of each store (287 stores) called all_list. Then we save this file as wawa_data.rds.  
+
+In parse_wawa.R, we mainly use "map_df" to turn each part of nested lists to several data frames. Then we use "cbind" to combine all these data frames to a single data frame called "wawa_df" and save it as wawa.rds. In this single dataframe, each row represents each store. There're 287 Wawa stores in total. We store all variables in our data frame. 
+
+
+## Task 2
+
+In get_sheetz.R, first of all, we use two "if statement" to create directories data and data/wawa if they don't exist in our workspace. We first read the url of sheetz data, and save each link as sheetz by using functions including html_nodes and html_attrs in rvest. We then create a function called "sheetz_function" that would scrape the data for each link by using functions including html_nodes, read_html, html_text and fromJSON from rvest and jsonlite. Finally, we use map that would apply sheetz_function to each url of 10 sections to scrape the data. We call the result as sheetz_data and save it as sheetz_data.rds. The result is a list of 10 data frames, each representing a section.
+
+In parse_sheetz. R, we use a for loop that only selects store number, region, latitude and longitude since these variables are what we need for task 3 to analyze locations of Wawa and Sheetz. We then remove all rows that don't contain any information for section 10. In this data frame, each row represents each store. There're 277 stores in total. We call the result as sheetz_df and save it as sheetz.rds. 
+
+
+## Task 3
+
+```{r}
+# Read the stored data for wawa and sheetz
+wawa_data_df <- readRDS("data/wawa/wawa.rds")
+sheetz <- readRDS("data/sheetz/sheetz.rds")
+```
+
+##### Plot 2
+```{r}
+wawa_pa <- wawa_data_df %>% select(storeNumber, address.address,
+                                   address.city, address.state, 
+                                   address.loc1, address.loc2, addressUrl) %>% 
+  filter(address.state == "PA")
+
+# draw sheetz and wawa
+# create the dataframe to draw the plots
+wawa_loc <- wawa_pa %>% select(address.loc1,address.loc2) %>% mutate(
+  address.loc1 = as.numeric(address.loc1), address.loc2 = as.numeric(address.loc2))
+region <- rep("R000",nrow(wawa_loc))
+wawa_loc <- cbind(wawa_loc,region)
+
+sheetz_loc <- sheetz %>% select(latitude,longitude,region) %>% mutate(latitude = as.numeric(latitude),
+                                                                     longitude = as.numeric(longitude))
+
+total_loc <- as.data.frame(mapply(c,wawa_loc,sheetz_loc))
+colnames(total_loc) <- c("latitude","longitude","region")
+total_loc$latitude <- as.numeric(total_loc$latitude)
+total_loc$longitude <- as.numeric(total_loc$longitude)
+
+getColor <- function(data){
+  sapply(data$region,
+         function(region){
+           if(region == "R005") {
+             "green"
+             } else if(region == "R002") {
+             "red"
+               } else if(region == "R001") {
+             "purple"
+                 } else if(region == "R003"){
+               "orange"
+                 }else {"blue"}
+           })
+}
+
+icons <- awesomeIcons(
+  icon = 'ios-close',
+  iconColor = unname(getColor(total_loc)),
+  library = 'ion',
+  markerColor = unname(getColor(total_loc))
+)
+
+leaflet(total_loc) %>% addProviderTiles(providers$Stamen.Toner,options = tileOptions(minZoom=5, maxZoom=9)) %>% 
+    addAwesomeMarkers(~longitude,~latitude, icon = icons, label = ~as.character(region)) %>% 
+  addLegend("bottomleft",colors = c("green","red","purple","orange","blue"),
+            labels = c("Sheetz_R5","Sheetz_R2","Sheetz_R1","Sheetz_R3","Wawa"))
+```
+
+This plot provides a big-picture view of the relative locations of Wawa and Sheetz stores. We see that Wawa stores tend to be concentrated in the southeast area (close to Philadelphia) compared to the Sheetz stores. The data we got from Sheetz only contained store information of Pennsylvania, so we only used Wawa in Pennysylvania for comparison. We used the package "Leaflet" to draw the plots and seperated Sheetz stores by regions and drew the location by four different colors and drew Wawa by color blue. 
+
+As the plot suggested, Sheetz converged with Wawa only in region three. The places that they converge are near Reading PA, Allentown PA, and Bethlehem. In overall, both Sheetz and Wawa have their own dominant regions. Wawa is in the southeast and Sheetz is in the northwest. In addition, since both Wawa and Sheetz have around 300 stores, we can also conclude that Wawa is more concentrated and Sheetz is more spread out. Even though these two areas are not totally separable, they do converge somehow. We might guess that Sheetz starts to take the dominant in this turf fuel war but not very much. Or maybe it's Wawa's move to expand its business scope to the east. It is also possible that Wawa and Sheetz both want to "invade" each other's site and win the fuel war.
