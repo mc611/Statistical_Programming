@@ -1,0 +1,77 @@
+---
+title: "Homework 1"
+author: "Mengxuan Cui"
+date: "9/03/2019"
+output:
+  pdf_document: default
+  html_document:
+    keep_md: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, comment = NA)
+```
+
+## Task 1
+
+```{r Function}
+is.armstrong <- function(x) {
+  result <-c()
+  for(i in x){
+    if(mode(i)!="numeric"){
+      stop("Non numeric not allowed!")
+    }else if(i%%1!=0){
+      stop("Non integer not allowed!")
+    }else if(i<=0){
+      stop("Non positive numbers not allowed!")
+    }else if(i>999){
+      stop("Numbers more than 999 not allowed!")
+    }else{
+      a <- i %/% 100
+      b <- (i-100*a) %/% 10
+      c <- i %% 10
+      if(a>0){
+        n=3
+      }else if(b>0){
+        n=2
+      }else{
+        n=1
+      }
+      t = (a^n+b^n+c^n==i)
+    }
+    result<-append(result,t)
+  }
+  result
+}
+```
+
+
+## Task 2
+#### Valid inputs
+
+```{r Valid input test}
+is.armstrong(x = 1)
+is.armstrong(x = 153)
+is.armstrong(x = 154)
+is.armstrong(x = c(153, 154))
+is.armstrong(x = 1:999)
+```
+
+#### Invalid inputs
+
+```{r Invalid input test, error=TRUE}
+is.armstrong(x = -2)
+is.armstrong(x = c(0,F))
+is.armstrong(x = 1011)
+is.armstrong(x = c(pi, 6))
+is.armstrong(x = c(6, pi))
+is.armstrong(x = "a")
+```
+## Task 3
+#### Firstly, I only considered positive integers ranging from 1 to 999. I coded to check their number of digit and their condition as armstrong. I built an emepty vector and put the logicstic result into the vector one by one so that input and output had the samee length. 
+#### Secondly, I thought about what the result should be if inputs were not positive integers from 1 to 999. So I added more if/else if conditions. 
+#### By far I think my function is robust. One improvement I would like to make is how to detect the number of digit. Say, with aim of extension to 9999, the code has to be re-writed. 
+
+
+
+
