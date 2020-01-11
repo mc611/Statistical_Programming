@@ -1,0 +1,155 @@
+---
+title: "Homework 2"
+author: "kodkod [Mengxuan Cui, Lauren Palazzo, Tao Ni]"
+date: "9/6/2019"
+output:
+  html_document:
+    keep_md: yes
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, comment = NA)
+```
+
+## Task 2
+
+"Signclass" is a class for numeric variables such that, when an operation (as reflected in a generic base-R function) is performed on an object of class signclass, only the sign of the result is returned. 
+
+```{r}
+# constructor function: converts an input to class signclass, after checking that the input is of the right type
+# for example, here it is checking that the input is in fact a double
+
+new_signclass <- function(x = double()) {
+ stopifnot(is.double(x))
+ structure(x, class = "signclass")
+}
+```
+
+```{r}
+# validator function: checks more broadly that inputs are valid
+# for example, here it is checking that the input is not Inf, since input numbers should be finite (even though 'Inf' is of the correct type double)
+
+validate_signclass <- function(x){
+ if(x==Inf){
+   stop("x must be a finite number")
+ }
+}
+```
+
+```{r}
+# helper function: combines the contructor and validator functions to make it easy to create a new signclass object, even if input is not quite right
+# for example, here the helper function assumes an integer input should be converted to a double and does so
+
+signclass <- function(x){
+ if(is.integer(x)){
+   x <- as.double(x)
+   x <- new_signclass(x)
+   validate_signclass(x)
+ }
+ return(x)
+}
+```
+
+```{r}
+# Define a method for applying the square root function (sqrt) to a signclass object
+
+sqrt.signclass <- function(x){
+ stopifnot(is.double(x))
+ if(x==0){
+   return("0")
+ }
+ else if (x>0){
+   return("+")
+ }
+ else {
+   return("does not exist")
+ }
+}
+
+# Define a method for applying the absolute value function (abs) to a signclass object
+  abs.signclass <- function(x){
+     stopifnot(is.double(x))
+     if(x==0){
+       return("0")
+     }
+     else{
+       return("+")
+     }
+  }
+  
+```
+
+```{r error=TRUE}
+ # test constructor: the invalid input leads to an error
+a <- new_signclass(8L)
+sqrt(a)
+
+# test validator function 
+validate_signclass(new_signclass(x = 4))
+validate_signclass(new_signclass(x = Inf)) 
+
+# test helper function:
+b <- as.integer(-3)
+  # this gives an error
+new_signclass(b)
+abs(b)
+  # this works properly
+b <- signclass(b)
+abs(b)
+```
+
+## Task 3
+
+```{r Function}
+is.armstrong <- function(x) {
+  result <-c()
+  for(i in x){
+    if(is.na(i)){
+      stop("Missing value not allowed!")
+    }else if(!is.numeric(i)){
+      stop("Non-numeric not allowed!")
+    }else if(i%%1!=0){
+      stop("Non-integer not allowed!")
+    }else if(i<=0){
+      stop("Non-positive numbers not allowed!")
+    }else if(i>999){
+      stop("Numbers more than 999 not allowed!")
+    }else{
+      a <- i %/% 100
+      b <- (i-100*a) %/% 10
+      c <- i %% 10
+      n <- ceiling(log10(i+1))
+      t <- (a^n+b^n+c^n==i)
+    }
+    result<-append(result,t)
+  }
+  result
+}
+```
+
+#### Valid inputs
+
+```{r test_valid}
+is.armstrong(x = 1)
+is.armstrong(x = 153)
+is.armstrong(x = 153.000)
+is.armstrong(x = 154)
+is.armstrong(x = c(153, 154))
+is.armstrong(x = 1:999)
+```
+
+#### Invalid inputs
+
+```{r error=TRUE}
+is.armstrong(x = -2)
+is.armstrong(x = 1011)
+is.armstrong(x = c(pi, 6))
+is.armstrong(x = "a")
+is.armstrong(x = "153")
+is.armstrong(x = c(2,NA))
+is.armstrong(x = NA)
+is.armstrong(x = TRUE)
+is.armstrong(x = FALSE)
+```
+
